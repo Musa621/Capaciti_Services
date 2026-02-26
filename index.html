@@ -594,7 +594,7 @@ var REMEMBER_KEY  = "talentbloom_remember";
 
 function createSession(user, remember) {
   var token = btoa(user.id + ":" + Date.now() + ":" + Math.random());
-  var session = { token: token, userId: user.id, role: user.role, ts: Date.now() };
+  var session = { token: token, userId: user.id, userEmail: user.email, role: user.role, ts: Date.now() };
   if(remember){
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     localStorage.setItem(REMEMBER_KEY, "1");
@@ -621,7 +621,10 @@ function clearSession() {
 function restoreSession() {
   var sess = getStoredSession();
   if(!sess) return;
-  var user = DB.users.find(function(u){ return u.id === sess.userId && u.role === sess.role; });
+  /* Match by id OR email (Firebase uses string IDs) */
+  var user = DB.users.find(function(u){
+    return (u.id === sess.userId || u.email === sess.userEmail) && u.role === sess.role;
+  });
   if(!user) return;
   /* Session is valid — auto login */
   launchApp(user, false);
@@ -1147,9 +1150,10 @@ async function doGoogleSignIn() {
     /* Check if user already exists in our DB */
     var existing = DB.users.find(function(u){ return u.email === fbUser.email; });
     if(existing) {
-      /* Existing user — log them in */
+      /* Existing user — log them in with remember=true */
       createSession(existing, true);
       launchApp(existing, true);
+      showToast("Welcome back, " + existing.name.split(" ")[0] + "! 👋");
       return;
     }
 
@@ -1180,7 +1184,7 @@ async function doGoogleSignIn() {
     } catch(e) { console.warn("Firestore save failed:", e.message); }
 
     DB.users.push(newUser);
-    createSession(newUser, true);
+    createSession(newUser, true); /* remember=true saves to localStorage */
     launchApp(newUser, true);
     showToast("Welcome, " + newUser.name.split(" ")[0] + "! 🎉");
 
