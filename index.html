@@ -1007,11 +1007,11 @@ async function doVerify() {
   pendingUser.emailVerified = true;
 
   /* Save to Firebase Firestore */
-  if(window.fbDb) {
+  if(window.fbDb && window.fbCreateUser) {
     try {
-      await window.fbCreateUser(window.fbAuth, pendingUser.email, pendingUser._plainPassword || pendingUser.email);
-      var fbUser = window.fbAuth.currentUser;
-      await window.fbSetDoc(window.fbDoc(window.fbDb, "users", fbUser.uid), {
+      var fbResult = await window.fbCreateUser(window.fbAuth, pendingUser.email, pendingUser._plainPassword);
+      var fbUid = fbResult.user.uid;
+      await window.fbSetDoc(window.fbDoc(window.fbDb, "users", fbUid), {
         name:      pendingUser.name,
         email:     pendingUser.email,
         role:      pendingUser.role,
@@ -1022,17 +1022,20 @@ async function doVerify() {
       });
       console.log("✅ User saved to Firebase!");
     } catch(fbErr) {
-      console.warn("Firebase save failed (continuing locally):", fbErr.message);
+      console.warn("Firebase note:", fbErr.message);
     }
   }
 
-  DB.users.push(pendingUser);
-  document.getElementById("verify-page").classList.add("hidden");
-  createSession(pendingUser, false);
-  launchApp(pendingUser, false);
-  showToast("Email verified! Welcome, " + pendingUser.name.split(" ")[0] + " 🎉");
+  /* Keep reference before clearing */
+  var verifiedUser = pendingUser;
   pendingUser  = null;
   currentOtp   = null;
+
+  DB.users.push(verifiedUser);
+  document.getElementById("verify-page").classList.add("hidden");
+  createSession(verifiedUser, false);
+  launchApp(verifiedUser, false);
+  showToast("Email verified! Welcome, " + verifiedUser.name.split(" ")[0] + " 🎉");
 }
 
 /* ── Resend OTP ── */
@@ -1182,7 +1185,8 @@ async function doGoogleSignIn() {
     showToast("Welcome, " + newUser.name.split(" ")[0] + "! 🎉");
 
   } catch(err) {
-    if(err.code !== "auth/popup-closed-by-user") {
+    var silent = ["auth/popup-closed-by-user", "auth/cancelled-popup-request"];
+    if(!silent.includes(err.code)) {
       showToast("Google sign-in failed: " + err.message, "error");
       console.error("Google sign-in error:", err);
     }
