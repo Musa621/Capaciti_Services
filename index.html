@@ -245,6 +245,12 @@
 </head>
 <body>
 
+<!-- ════ LOADING SCREEN ════ -->
+<div id="loading-screen" style="position:fixed;inset:0;background:#020817;z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
+  <div style="width:48px;height:48px;border:3px solid #1e293b;border-top-color:#6366f1;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+  <div style="color:#475569;font-size:14px;font-weight:600;">Loading CAPACITI IMS…</div>
+</div>
+
 <!-- ════ OTP VERIFICATION PAGE ════ -->
 <div id="verify-page" class="hidden">
   <div class="verify-box">
@@ -330,13 +336,13 @@
       </div>
       <div class="field-hint hidden" id="su-confirm-hint"></div>
     </div>
-    <button class="btn btn-primary btn-full" id="signup-btn" style="padding:14px;" onclick="doSignup()">Create Account →</button>
+    <button class="btn btn-primary btn-full" id="signup-btn" style="padding:14px;" onclick="safeCall(doSignup)">Create Account →</button>
     <div class="or-divider" style="margin-top:14px;">or</div>
-    <button class="btn-google" onclick="doGoogleSignIn()">
+    <button class="btn-google" onclick="safeCall(doGoogleSignIn)">
       <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"/>
       Continue with Google
     </button>
-    <div class="auth-switch" style="margin-top:16px;">Already have an account? <a onclick="showLogin()">Sign In</a></div>
+    <div class="auth-switch" style="margin-top:16px;">Already have an account? <a onclick="safeCall(showLogin)">Sign In</a></div>
   </div>
 </div>
 
@@ -375,13 +381,13 @@
       <input type="checkbox" id="remember-me"/>
       <label for="remember-me">Keep me signed in</label>
     </div>
-    <button class="btn btn-primary btn-full" id="login-btn" style="padding:14px;" onclick="doLogin()">Sign In →</button>
+    <button class="btn btn-primary btn-full" id="login-btn" style="padding:14px;" onclick="safeCall(doLogin)">Sign In →</button>
     <div class="or-divider" style="margin-top:14px;">or</div>
-    <button class="btn-google" onclick="doGoogleSignIn()">
+    <button class="btn-google" onclick="safeCall(doGoogleSignIn)">
       <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"/>
       Continue with Google
     </button>
-    <div class="auth-switch" style="margin-top:16px;">New student? <a onclick="showSignup()">Create an account</a></div>
+    <div class="auth-switch" style="margin-top:16px;">New student? <a onclick="safeCall(showSignup)">Create an account</a></div>
   </div>
 </div>
 
@@ -562,6 +568,14 @@ async function sha256(str) {
 
 /* Pre-hash all demo passwords on startup so DB never stores plaintext */
 var AUTH_READY = false;
+
+/* Safe wrapper — queues calls until auth is ready */
+function safeCall(fn) {
+  if(AUTH_READY) { fn(); return; }
+  var wait = setInterval(function(){
+    if(AUTH_READY){ clearInterval(wait); fn(); }
+  }, 100);
+}
 async function initAuth() {
   for(var i=0;i<DB.users.length;i++){
     var u=DB.users[i];
@@ -960,7 +974,7 @@ function otpKey(e, idx) {
 }
 
 /* ── Verify OTP ── */
-function doVerify() {
+async function doVerify() {
   var entered = "";
   for(var i=0;i<6;i++) entered += document.getElementById("otp"+i).value;
   var errEl = document.getElementById("verify-error");
@@ -1181,7 +1195,20 @@ shakeStyle.textContent = "@keyframes shake{0%,100%{transform:translateX(0)}20%,6
 document.head.appendChild(shakeStyle);
 
 /* ── INIT on page load ── */
-document.addEventListener("DOMContentLoaded", function(){ initAuth(); });
+document.addEventListener("DOMContentLoaded", function(){
+  /* Wait for Firebase module to load before initialising auth */
+  var attempts = 0;
+  var waitForFirebase = setInterval(function(){
+    attempts++;
+    if(window.firebaseReady || attempts > 20){
+      clearInterval(waitForFirebase);
+      initAuth();
+      /* Hide loading screen */
+      var ls = document.getElementById("loading-screen");
+      if(ls) ls.style.display = "none";
+    }
+  }, 100);
+});
 
 /* ══════════════════════════════════════════
    SIDEBAR
