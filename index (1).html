@@ -6,6 +6,42 @@
   <title>CAPACITI – Internship Management System</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, getDocs, updateDoc, addDoc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBHi1XRLrJq_XwalIvEKzcjV6f0cc9GW4c",
+      authDomain: "talent-bloom-332a9.firebaseapp.com",
+      projectId: "talent-bloom-332a9",
+      storageBucket: "talent-bloom-332a9.firebasestorage.app",
+      messagingSenderId: "658850120784",
+      appId: "1:658850120784:web:1769b08c5a175b89f0fd55"
+    };
+
+    const app  = initializeApp(firebaseConfig);
+    window.fbAuth = getAuth(app);
+    window.fbDb   = getFirestore(app);
+    window.fbCreateUser = createUserWithEmailAndPassword;
+    window.fbSignIn     = signInWithEmailAndPassword;
+    window.fbSignOut    = signOut;
+    window.fbDoc        = doc;
+    window.fbSetDoc     = setDoc;
+    window.fbGetDoc     = getDoc;
+    window.fbCollection = collection;
+    window.fbGetDocs    = getDocs;
+    window.fbUpdateDoc  = updateDoc;
+    window.fbAddDoc     = addDoc;
+    window.fbQuery      = query;
+    window.fbWhere      = where;
+
+    window.fbGoogleProvider = new GoogleAuthProvider();
+    window.fbSignInWithPopup = signInWithPopup;
+    window.firebaseReady = true;
+    console.log("✅ Firebase connected!");
+  </script>
   <style>
     /* ── RESET & BASE ──────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -155,6 +191,11 @@
     .auth-switch { text-align: center; margin-top: 20px; font-size: 13px; color: #475569; }
     .auth-switch a { color: #818cf8; font-weight: 700; cursor: pointer; text-decoration: none; }
     .auth-switch a:hover { color: #a5b4fc; }
+    .btn-google { background: #fff; color: #1f2937; border: 1px solid #d1d5db; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; margin-bottom: 14px; transition: all 0.15s; font-family: inherit; }
+    .btn-google:hover { background: #f9fafb; box-shadow: 0 2px 8px #00000020; }
+    .btn-google img { width: 20px; height: 20px; }
+    .or-divider { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: #334155; font-size: 12px; font-weight: 600; }
+    .or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: #1e293b; }
     /* ── MARK BADGE ──────────────────────────────────────── */
     .mark-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 800; }
     .mark-high   { background: #22c55e18; color: #22c55e; border: 1px solid #22c55e40; }
@@ -290,6 +331,11 @@
       <div class="field-hint hidden" id="su-confirm-hint"></div>
     </div>
     <button class="btn btn-primary btn-full" id="signup-btn" style="padding:14px;" onclick="doSignup()">Create Account →</button>
+    <div class="or-divider" style="margin-top:14px;">or</div>
+    <button class="btn-google" onclick="doGoogleSignIn()">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"/>
+      Continue with Google
+    </button>
     <div class="auth-switch" style="margin-top:16px;">Already have an account? <a onclick="showLogin()">Sign In</a></div>
   </div>
 </div>
@@ -330,6 +376,11 @@
       <label for="remember-me">Keep me signed in</label>
     </div>
     <button class="btn btn-primary btn-full" id="login-btn" style="padding:14px;" onclick="doLogin()">Sign In →</button>
+    <div class="or-divider" style="margin-top:14px;">or</div>
+    <button class="btn-google" onclick="doGoogleSignIn()">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"/>
+      Continue with Google
+    </button>
     <div class="auth-switch" style="margin-top:16px;">New student? <a onclick="showSignup()">Create an account</a></div>
   </div>
 </div>
@@ -706,6 +757,12 @@ async function doLogin() {
 
   if(found){
     clearAttempts(email);
+    /* Also sign into Firebase if available */
+    if(window.fbAuth && window.fbSignIn) {
+      window.fbSignIn(window.fbAuth, email, pass).catch(function(e){
+        console.log("Firebase login note:", e.message);
+      });
+    }
     createSession(found, remember);
     launchApp(found, true);
   } else {
@@ -930,10 +987,31 @@ function doVerify() {
     errEl.classList.remove("hidden"); return;
   }
 
-  /* ✅ Verified! Mark user as verified and launch */
+  /* ✅ Verified! Save user to Firebase + local DB then launch */
   clearInterval(otpExpiryTimer);
   clearInterval(resendTimer);
   pendingUser.emailVerified = true;
+
+  /* Save to Firebase Firestore */
+  if(window.fbDb) {
+    try {
+      await window.fbCreateUser(window.fbAuth, pendingUser.email, pendingUser._plainPassword || pendingUser.email);
+      var fbUser = window.fbAuth.currentUser;
+      await window.fbSetDoc(window.fbDoc(window.fbDb, "users", fbUser.uid), {
+        name:      pendingUser.name,
+        email:     pendingUser.email,
+        role:      pendingUser.role,
+        track:     pendingUser.track,
+        status:    pendingUser.status,
+        mentor_id: pendingUser.mentor_id,
+        createdAt: new Date().toISOString()
+      });
+      console.log("✅ User saved to Firebase!");
+    } catch(fbErr) {
+      console.warn("Firebase save failed (continuing locally):", fbErr.message);
+    }
+  }
+
   DB.users.push(pendingUser);
   document.getElementById("verify-page").classList.add("hidden");
   createSession(pendingUser, false);
@@ -1014,6 +1092,7 @@ async function doSignup() {
   /* Build user but DON'T push to DB yet — wait for email verification */
   pendingUser = {
     id: Date.now(), name: name, email: email, password: hashed,
+    _plainPassword: pass,
     role: "student", mentor_id: defaultMentor, status: "Active", track: track,
     emailVerified: false
   };
@@ -1037,6 +1116,63 @@ async function doSignup() {
   btn.innerHTML = "Create Account →";
   btn.classList.remove("login-loading");
   showVerifyPage(pendingUser);
+}
+
+/* ── Google Sign-In ── */
+async function doGoogleSignIn() {
+  if(!window.fbAuth || !window.fbSignInWithPopup) {
+    showToast("Firebase not ready. Please wait.", "error"); return;
+  }
+  try {
+    var result = await window.fbSignInWithPopup(window.fbAuth, window.fbGoogleProvider);
+    var fbUser = result.user;
+
+    /* Check if user already exists in our DB */
+    var existing = DB.users.find(function(u){ return u.email === fbUser.email; });
+    if(existing) {
+      /* Existing user — log them in */
+      createSession(existing, true);
+      launchApp(existing, true);
+      return;
+    }
+
+    /* New user — create student account */
+    var newUser = {
+      id:            Date.now(),
+      name:          fbUser.displayName || fbUser.email.split("@")[0],
+      email:         fbUser.email,
+      password:      "$hash$google",
+      role:          "student",
+      mentor_id:     DB.mentors[0] ? DB.mentors[0].id : null,
+      status:        "Active",
+      track:         "Software Development",
+      emailVerified: true
+    };
+
+    /* Save to Firestore */
+    try {
+      await window.fbSetDoc(window.fbDoc(window.fbDb, "users", fbUser.uid), {
+        name:      newUser.name,
+        email:     newUser.email,
+        role:      newUser.role,
+        track:     newUser.track,
+        status:    newUser.status,
+        createdAt: new Date().toISOString(),
+        provider:  "google"
+      });
+    } catch(e) { console.warn("Firestore save failed:", e.message); }
+
+    DB.users.push(newUser);
+    createSession(newUser, true);
+    launchApp(newUser, true);
+    showToast("Welcome, " + newUser.name.split(" ")[0] + "! 🎉");
+
+  } catch(err) {
+    if(err.code !== "auth/popup-closed-by-user") {
+      showToast("Google sign-in failed: " + err.message, "error");
+      console.error("Google sign-in error:", err);
+    }
+  }
 }
 
 /* ── Shake keyframe ── */
