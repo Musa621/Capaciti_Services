@@ -1198,6 +1198,89 @@ var shakeStyle = document.createElement("style");
 shakeStyle.textContent = "@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}";
 document.head.appendChild(shakeStyle);
 
+/* ── Load data from Firebase Firestore ── */
+async function loadFirestoreData() {
+  if(!window.fbDb) return;
+  try {
+    /* Load users */
+    var usersSnap = await window.fbGetDocs(window.fbCollection(window.fbDb, "users"));
+    var firestoreUsers = [];
+    usersSnap.forEach(function(doc) {
+      var data = doc.data();
+      firestoreUsers.push({
+        id:        doc.id,
+        name:      data.name      || "",
+        email:     data.email     || "",
+        role:      data.role      || "student",
+        track:     data.track     || "",
+        status:    data.status    || "Active",
+        mentor_id: data.mentor_id || DB.mentors[0].id,
+        password:  "$hash$firebase"
+      });
+    });
+    if(firestoreUsers.length > 0) {
+      /* Keep demo admin accounts, merge with firestore users */
+      var admins = DB.users.filter(function(u){ return u.role === "admin"; });
+      var firestoreEmails = firestoreUsers.map(function(u){ return u.email; });
+      var nonDuplicateAdmins = admins.filter(function(a){ return !firestoreEmails.includes(a.email); });
+      DB.users = nonDuplicateAdmins.concat(firestoreUsers);
+    }
+
+    /* Load projects */
+    var projectsSnap = await window.fbGetDocs(window.fbCollection(window.fbDb, "projects"));
+    var firestoreProjects = [];
+    projectsSnap.forEach(function(doc) {
+      var data = doc.data();
+      firestoreProjects.push({
+        id:          doc.id,
+        student_id:  data.student_id  || "",
+        title:       data.title       || "",
+        github_link: data.github_link || "",
+        description: data.description || "",
+        feedback:    data.feedback    || "",
+        status:      data.status      || "Pending",
+        mark:        data.mark        || null,
+        submitted:   data.submitted   || TODAY
+      });
+    });
+    if(firestoreProjects.length > 0) DB.projects = firestoreProjects;
+
+    /* Load attendance */
+    var attSnap = await window.fbGetDocs(window.fbCollection(window.fbDb, "attendance"));
+    var firestoreAtt = [];
+    attSnap.forEach(function(doc) {
+      var data = doc.data();
+      firestoreAtt.push({
+        id:         doc.id,
+        student_id: data.student_id || "",
+        date:       data.date       || "",
+        status:     data.status     || "Present"
+      });
+    });
+    if(firestoreAtt.length > 0) DB.attendance = firestoreAtt;
+
+    console.log("✅ Data loaded from Firestore!");
+  } catch(err) {
+    console.warn("Firestore load failed, using local data:", err.message);
+  }
+}
+
+/* ── Save new project to Firestore ── */
+async function saveProjectToFirestore(project) {
+  if(!window.fbDb) return;
+  try {
+    await window.fbAddDoc(window.fbCollection(window.fbDb, "projects"), project);
+  } catch(e) { console.warn("Project save failed:", e.message); }
+}
+
+/* ── Save attendance to Firestore ── */
+async function saveAttendanceToFirestore(record) {
+  if(!window.fbDb) return;
+  try {
+    await window.fbAddDoc(window.fbCollection(window.fbDb, "attendance"), record);
+  } catch(e) { console.warn("Attendance save failed:", e.message); }
+}
+
 /* ── INIT on page load ── */
 document.addEventListener("DOMContentLoaded", function(){
   /* Wait for Firebase module to load before initialising auth */
@@ -1206,10 +1289,12 @@ document.addEventListener("DOMContentLoaded", function(){
     attempts++;
     if(window.firebaseReady || attempts > 20){
       clearInterval(waitForFirebase);
-      initAuth();
-      /* Hide loading screen */
-      var ls = document.getElementById("loading-screen");
-      if(ls) ls.style.display = "none";
+      /* Load Firestore data first then init auth */
+      loadFirestoreData().then(function(){
+        initAuth();
+        var ls = document.getElementById("loading-screen");
+        if(ls) ls.style.display = "none";
+      });
     }
   }, 100);
 });
@@ -1616,7 +1701,9 @@ function saveProject() {
   var link =document.getElementById("p-link").value.trim();
   var desc =document.getElementById("p-desc").value.trim();
   if(!title||!link){ alert("Please fill in the title and GitHub link."); return; }
-  DB.projects.push({id:Date.now(),student_id:currentUser.id,title:title,github_link:link,description:desc,feedback:"",status:"Pending",submitted:TODAY});
+  var newProject = {student_id:currentUser.id,title:title,github_link:link,description:desc,feedback:"",status:"Pending",submitted:TODAY};
+  DB.projects.push(Object.assign({id:Date.now()}, newProject));
+  saveProjectToFirestore(newProject);
   showToast("Project submitted!"); closeModal(); renderPage();
 }
 
